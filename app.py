@@ -7,6 +7,8 @@ import gradio as gr
 import librosa
 import numpy as np
 import os
+from pathlib import Path
+import json
 import phonemizer
 import pypdf
 import random
@@ -16,13 +18,21 @@ import subprocess
 import torch
 import yaml
 
-CUDA_AVAILABLE = torch.cuda.is_available()
+# CUDA_AVAILABLE = torch.cuda.is_available()
+CUDA_AVAILABLE = torch.backends.mps.is_available()
 
-snapshot = snapshot_download(repo_id='hexgrad/kokoro', allow_patterns=['*.pt', '*.pth', '*.yml'], use_auth_token=os.environ['TOKEN'])
-config = yaml.safe_load(open(os.path.join(snapshot, 'config.yml')))
-
-models = {device: build_model(config['model_params'], device) for device in ['cpu'] + (['cuda'] if CUDA_AVAILABLE else [])}
-for key, state_dict in torch.load(os.path.join(snapshot, 'net.pth'), map_location='cpu', weights_only=True)['net'].items():
+# snapshot = snapshot_download(repo_id='hexgrad/kokoro', allow_patterns=['*.pt', '*.pth', '*.yml'], use_auth_token=os.environ['TOKEN'])
+# config = yaml.safe_load(open(os.path.join(snapshot, 'config.yml')))
+device = 'mps' if torch.cuda.is_available() else 'cpu'
+# models = {device: build_model(config['model_params'], device) for device in ['cpu'] + (['cuda'] if CUDA_AVAILABLE else [])}
+configfile = Path(__file__).parent / 'config.json'
+assert configfile.exists(), f'Config path incorrect: config.json not found at {configfile}'
+r = open(configfile).read()
+config = json.loads(r)
+#models = {device: build_model(config, device)}
+models = {device: build_model(config, device) for device in ['cpu'] + (['mps'] if CUDA_AVAILABLE else [])}
+# for key, state_dict in torch.load(os.path.join(snapshot, 'net.pth'), map_location='cpu', weights_only=True)['net'].items():
+for key, state_dict in torch.load('kokoro-v0_19.pth', map_location='cpu', weights_only=True)['net'].items():
     for device in models:
         assert key in models[device], key
         try:
@@ -33,11 +43,6 @@ for key, state_dict in torch.load(os.path.join(snapshot, 'net.pth'), map_locatio
 
 PARAM_COUNT = sum(p.numel() for value in models['cpu'].values() for p in value.parameters())
 assert PARAM_COUNT < 82_000_000, PARAM_COUNT
-with open(os.path.join(snapshot, 'net.pth'), 'rb') as rb:
-    model_hash = sha256(rb.read()).hexdigest()
-    print('model_hash', model_hash)
-    # SHA256 hash matches https://huggingface.co/hexgrad/Kokoro-82M/blob/main/kokoro-v0_19.pth
-    assert model_hash == '3b0c392f87508da38fad3a2f9d94c359f1b657ebd2ef79f9d56d69503e470b0a'
 
 random_texts = {}
 for lang in ['en', 'fr', 'ja', 'ko', 'zh']:
@@ -51,7 +56,7 @@ def get_random_text(voice):
 sents = set()
 for txt in {'harvard_sentences', 'llama3_command-r_sentences_1st_person', 'llama3_command-r_sentences_excla', 'llama3_command-r_questions'}:
     txt += '.txt'
-    subprocess.run(['wget', f'https://huggingface.co/spaces/Pendrokar/TTS-Spaces-Arena/resolve/main/{txt}'])
+    # subprocess.run(['wget', f'https://huggingface.co/spaces/Pendrokar/TTS-Spaces-Arena/resolve/main/{txt}'])
     with open(txt, 'r') as r:
         sents.update(r.read().strip().splitlines())
 print('len(sents)', len(sents))
@@ -142,14 +147,20 @@ CHOICES = {
 '🇺🇸 🚺 Bella ⭐': 'af_bella',
 '🇺🇸 🚺 Nicole ⭐': 'af_nicole',
 '🇺🇸 🚺 Sarah ⭐': 'af_sarah',
+'🇺🇸 🚺 Sky': 'af_sky',
+'🇺🇸 🚹 Adam': 'am_adam',
+'🇺🇸 🚹 Michael ⭐': 'am_michael',
+'🇬🇧 🚺 Emma': 'bf_emma',
+'🇬🇧 🚺 Isabella': 'bf_isabella',
+'🇬🇧 🚹 George': 'bm_george',
+'🇬🇧 🚹 Lewis': 'bm_lewis',
+}
+"""
 '🇺🇸 🚺 American Female 1': 'af_1',
 '🇺🇸 🚺 Alloy': 'af_alloy',
 '🇺🇸 🚺 Jessica': 'af_jessica',
 '🇺🇸 🚺 Nova': 'af_nova',
 '🇺🇸 🚺 River': 'af_river',
-'🇺🇸 🚺 Sky': 'af_sky',
-'🇺🇸 🚹 Michael ⭐': 'am_michael',
-'🇺🇸 🚹 Adam': 'am_adam',
 '🇺🇸 🚹 Echo': 'am_echo',
 '🇺🇸 🚹 Eric': 'am_eric',
 '🇺🇸 🚹 Liam': 'am_liam',
@@ -164,14 +175,12 @@ CHOICES = {
 '🇬🇧 🚹 British Male 1': 'bm_1',
 '🇬🇧 🚹 Daniel': 'bm_daniel',
 '🇬🇧 🚹 Fable': 'bm_fable',
-'🇬🇧 🚹 George': 'bm_george',
-'🇬🇧 🚹 Lewis': 'bm_lewis',
 '🇯🇵 🚺 Japanese Female ⭐': 'jf_0',
 '🇯🇵 🚺 Japanese Female 1': 'jf_1',
 '🇯🇵 🚺 Japanese Female 2': 'jf_2',
 '🇯🇵 🚺 Japanese Female 3': 'jf_3',
-}
-VOICES = {device: {k: torch.load(os.path.join(snapshot, 'voicepacks', f'{k}.pt'), weights_only=True).to(device) for k in CHOICES.values()} for device in models}
+"""
+VOICES = {device: {k: torch.load(os.path.join('voices', f'{k}.pt'), weights_only=True).to(device) for k in CHOICES.values()} for device in models}
 
 def resolve_voices(voice, warn=True):
     if not isinstance(voice, str) or voice == list(CHOICES.keys())[0]:
@@ -225,7 +234,7 @@ harvard_sentences = set()
 with open('harvard_sentences.txt', 'r') as r:
     for line in r:
         harvard_sentences.add(phonemize(line, 'af'))
-        harvard_sentences.add(phonemize(line, 'bf_0'))
+        harvard_sentences.add(phonemize(line, 'bf_emma'))
 
 def length_to_mask(lengths):
     mask = torch.arange(lengths.max()).unsqueeze(0).expand(lengths.shape[0], -1).type_as(lengths)
@@ -236,7 +245,7 @@ SAMPLE_RATE = 24000
 
 @torch.no_grad()
 def forward(tokens, voices, speed, sk, device='cpu'):
-    assert sk in {os.environ['SK'], os.environ['ARENA'], os.environ['TEMP']}, sk
+    # assert sk in {os.environ['SK'], os.environ['ARENA'], os.environ['TEMP']}, sk
     ref_s = torch.mean(torch.stack([VOICES[device][v][len(tokens)] for v in voices]), dim=0)
     tokens = torch.LongTensor([[0, *tokens, 0]]).to(device)
     input_lengths = torch.LongTensor([tokens.shape[-1]]).to(device)
@@ -262,7 +271,7 @@ def forward(tokens, voices, speed, sk, device='cpu'):
 
 @spaces.GPU(duration=10)
 def forward_gpu(tokens, voices, speed, sk):
-    return forward(tokens, voices, speed, sk, device='cuda')
+    return forward(tokens, voices, speed, sk, device=device)
 
 def clamp_speed(speed):
     if not isinstance(speed, float) and not isinstance(speed, int):
@@ -295,9 +304,9 @@ def generate(text, voice='af', ps=None, speed=1, trim=0.5, use_gpu='auto', sk=No
     if not text.strip():
         return (None, '')
     ps = ps or phonemize(text, voice)
-    if sk not in {os.environ['SK'], os.environ['ARENA'], os.environ['TEMP']}:
-        assert text in sents or ps.strip('"') in harvard_sentences, ('❌', datetime.now(), text, voice, use_gpu, sk)
-        sk = os.environ['ARENA']
+    #if sk not in {os.environ['SK'], os.environ['ARENA'], os.environ['TEMP']}:
+    #   assert text in sents or ps.strip('"') in harvard_sentences, ('❌', datetime.now(), text, voice, use_gpu, sk)
+    #   sk = os.environ['ARENA']
     voices = resolve_voices(voice, warn=ps)
     speed = clamp_speed(speed)
     trim = clamp_trim(trim)
@@ -309,7 +318,8 @@ def generate(text, voice='af', ps=None, speed=1, trim=0.5, use_gpu='auto', sk=No
         tokens = tokens[:510]
     ps = ''.join(next(k for k, v in VOCAB.items() if i == v) for i in tokens)
     use_gpu = len(ps) > 99 if use_gpu == 'auto' else use_gpu
-    debug = '🔥' if sk == os.environ['SK'] else '🏆'
+#    debug = '🔥' if sk == os.environ['SK'] else '🏆'
+    debug = '🔥'
     try:
         if use_gpu:
             out = forward_gpu(tokens, voices, speed, sk)
@@ -340,10 +350,26 @@ ML_LANGUAGES = {
 '🇨🇳 zh-CN': 'z',
 }
 
-from gradio_client import Client
-client = Client('hexgrad/kokoro-src', hf_token=os.environ['SRC'])
-import json
-ML_CHOICES = json.loads(client.predict(api_name='/list_voices'))
+#from gradio_client import Client
+#client = Client('hexgrad/kokoro-src', hf_token=os.environ['SRC'])
+#import json
+ML_CHOICES = {'a': None, 'b': None}
+ML_CHOICES['a'] = {
+'🇺🇸 🚺 American Female ⭐': 'af',
+'🇺🇸 🚺 Bella ⭐': 'af_bella',
+'🇺🇸 🚺 Nicole ⭐': 'af_nicole',
+'🇺🇸 🚺 Sarah ⭐': 'af_sarah',
+'🇺🇸 🚺 Sky': 'af_sky',
+'🇺🇸 🚹 Adam': 'am_adam',
+'🇺🇸 🚹 Michael ⭐': 'am_michael'
+}
+ML_CHOICES['b'] = {
+'🇬🇧 🚺 Emma': 'bf_emma',
+'🇬🇧 🚺 Isabella': 'bf_isabella',
+'🇬🇧 🚹 George': 'bm_george',
+'🇬🇧 🚹 Lewis': 'bm_lewis',
+}
+
 DEFAULT_VOICE = list(ML_CHOICES['a'].values())[0]
 def change_language(value):
     choices = list(ML_CHOICES[value].items())
@@ -352,16 +378,17 @@ def change_language(value):
 def multilingual(text, voice, speed, trim, sk):
     if not text.strip():
         return None
-    assert sk == os.environ['SK'], ('❌', datetime.now(), text, voice, sk)
+    # assert sk == os.environ['SK'], ('❌', datetime.now(), text, voice, sk)
+    audio = None
+    out_ps = None
+    audio, out_ps = generate(text=text, voice=voice, speed=speed, trim=trim, use_gpu=True, sk=sk)
     try:
-        audio, out_ps = client.predict(text=text, voice=voice, speed=speed, trim=trim, use_gpu=True, sk=sk, api_name='/generate')
+        audio, out_ps = generate(text=text, voice=voice, speed=speed, trim=trim, use_gpu=True, sk=sk)
         if len(out_ps) == 510:
             gr.Warning('Input may have been truncated')
     except Exception as e:
         print('📡', datetime.now(), text, voice, repr(e))
         gr.Warning('v0.23 temporarily unavailable')
-        gr.Info('Switching to v0.19')
-        audio = generate(text, voice=voice, speed=speed, trim=trim, sk=sk)[0]
     return audio
 
 with gr.Blocks() as ml_tts:
@@ -449,11 +476,11 @@ with gr.Blocks() as basic_tts:
                 out_ps = gr.Textbox(interactive=False, show_label=False, info='Tokens used to generate the audio, up to 510 allowed. Same as input tokens if supplied, excluding unknowns.')
     with gr.Accordion('Voice Mixer', open=False):
         gr.Markdown('Create a custom voice by mixing and matching other voices. Click an orange button to add one part to your mix, or click a gray button to start over. You can also enter a voice mix as text.')
-        for i in range(8):
+        for i in range(4):
             with gr.Row():
-                for j in range(4):
+                for j in range(2):
                     with gr.Column():
-                        btn = gr.Button(list(CHOICES.values())[i*4+j], variant='primary' if i*4+j < 10 else 'secondary')
+                        btn = gr.Button(list(CHOICES.values())[i*2+j], variant='primary' if i*4+j < 10 else 'secondary')
                         btn.click(lambda v, b: f'{v}+{b}' if v.startswith(b[:2]) else b, inputs=[voice, btn], outputs=[voice])
                         voice.change(lambda v, b: gr.Button(b, variant='primary' if v.startswith(b[:2]) else 'secondary'), inputs=[voice, btn], outputs=[btn])
     with gr.Row():
@@ -464,7 +491,7 @@ with gr.Blocks() as basic_tts:
 
 @torch.no_grad()
 def lf_forward(token_lists, voices, speed, sk, device='cpu'):
-    assert sk == os.environ['SK'], sk
+    # assert sk == os.environ['SK'], sk
     voicepack = torch.mean(torch.stack([VOICES[device][v] for v in voices]), dim=0)
     outs = []
     for tokens in token_lists:
@@ -494,7 +521,7 @@ def lf_forward(token_lists, voices, speed, sk, device='cpu'):
 
 @spaces.GPU
 def lf_forward_gpu(token_lists, voices, speed, sk):
-    return lf_forward(token_lists, voices, speed, sk, device='cuda')
+    return lf_forward(token_lists, voices, speed, sk, device=device)
 
 def resplit_strings(arr):
     # Handle edge cases
@@ -550,8 +577,8 @@ def segment_and_tokenize(text, voice, skip_square_brackets=True, newline_split=2
     return [(i, *row) for i, row in enumerate(segments)]
 
 def lf_generate(segments, voice, speed=1, trim=0, pad_between=0, use_gpu=True, sk=None):
-    if sk != os.environ['SK']:
-        return
+    # if sk != os.environ['SK']:
+    #    return
     token_lists = list(map(tokenize, segments['Tokens']))
     voices = resolve_voices(voice)
     speed = clamp_speed(speed)
