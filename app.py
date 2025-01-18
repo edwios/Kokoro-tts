@@ -56,7 +56,9 @@ def get_random_text(voice):
 sents = set()
 for txt in {'harvard_sentences', 'llama3_command-r_sentences_1st_person', 'llama3_command-r_sentences_excla', 'llama3_command-r_questions'}:
     txt += '.txt'
-    # subprocess.run(['wget', f'https://huggingface.co/spaces/Pendrokar/TTS-Spaces-Arena/resolve/main/{txt}'])
+    # Todo:
+    # Check for existance of these text before downloading them, or just gtf rid of them!
+    subprocess.run(['wget', f'https://huggingface.co/spaces/Pendrokar/TTS-Spaces-Arena/resolve/main/{txt}'])
     with open(txt, 'r') as r:
         sents.update(r.read().strip().splitlines())
 print('len(sents)', len(sents))
