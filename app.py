@@ -19,11 +19,11 @@ import torch
 import yaml
 
 # CUDA_AVAILABLE = torch.cuda.is_available()
-CUDA_AVAILABLE = torch.backends.mps.is_available()
+CUDA_AVAILABLE = torch.backends.mps.is_available() or torch.cuda.is_available()
 
 # snapshot = snapshot_download(repo_id='hexgrad/kokoro', allow_patterns=['*.pt', '*.pth', '*.yml'], use_auth_token=os.environ['TOKEN'])
 # config = yaml.safe_load(open(os.path.join(snapshot, 'config.yml')))
-device = 'mps' if torch.cuda.is_available() else 'cpu'
+device = 'cuda' if torch.cuda.is_available() else 'mps' if torch.backends.mps.is_available else 'cpu'
 # models = {device: build_model(config['model_params'], device) for device in ['cpu'] + (['cuda'] if CUDA_AVAILABLE else [])}
 configfile = Path(__file__).parent / 'config.json'
 assert configfile.exists(), f'Config path incorrect: config.json not found at {configfile}'
@@ -58,7 +58,7 @@ for txt in {'harvard_sentences', 'llama3_command-r_sentences_1st_person', 'llama
     txt += '.txt'
     # Todo:
     # Check for existance of these text before downloading them, or just gtf rid of them!
-    subprocess.run(['wget', f'https://huggingface.co/spaces/Pendrokar/TTS-Spaces-Arena/resolve/main/{txt}'])
+    # subprocess.run(['wget', f'https://huggingface.co/spaces/Pendrokar/TTS-Spaces-Arena/resolve/main/{txt}'])
     with open(txt, 'r') as r:
         sents.update(r.read().strip().splitlines())
 print('len(sents)', len(sents))
